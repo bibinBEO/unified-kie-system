@@ -165,8 +165,8 @@ class UnifiedDocumentProcessor:
 
     async def _process_text(self, file_path: str) -> List[Dict[str, Any]]:
         """Process plain text file"""
-        async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
-            content = await f.read()
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
             return [{"type": "text", "content": content, "page": 1}]
 
     async def _process_csv(self, file_path: str) -> List[Dict[str, Any]]:
@@ -228,12 +228,49 @@ class UnifiedDocumentProcessor:
         elif file_info["type"] == "image":
             image = Image.open(file_info["path"])
             
+            result = None
+            extraction_errors = []
+            
+            # Try extractors in order of preference with automatic fallback
+            extractors_to_try = []
+            
             if strategy == "nanonets" and self.nanonets_extractor:
-                result = await self.nanonets_extractor.extract(image, language)
+                extractors_to_try = [
+                    ("nanonets", self.nanonets_extractor),
+                    ("layoutlm", self.layoutlm_extractor) if self.layoutlm_extractor else None,
+                    ("easyocr", self.easyocr_extractor)
+                ]
             elif strategy == "layoutlm" and self.layoutlm_extractor:
-                result = await self.layoutlm_extractor.extract(image, language)
+                extractors_to_try = [
+                    ("layoutlm", self.layoutlm_extractor),
+                    ("easyocr", self.easyocr_extractor)
+                ]
             else:
-                result = await self.easyocr_extractor.extract(image, language)
+                extractors_to_try = [("easyocr", self.easyocr_extractor)]
+            
+            # Remove None entries
+            extractors_to_try = [ext for ext in extractors_to_try if ext is not None]
+            
+            for extractor_name, extractor in extractors_to_try:
+                try:
+                    print(f"Trying {extractor_name} extractor...")
+                    result = await extractor.extract(image, language)
+                    result["extraction_method"] = f"{extractor_name}_ocr"
+                    print(f"✅ {extractor_name} extraction successful")
+                    break
+                except Exception as e:
+                    error_msg = str(e)
+                    extraction_errors.append(f"{extractor_name}: {error_msg}")
+                    print(f"❌ {extractor_name} failed: {error_msg}")
+                    continue
+            
+            if result is None:
+                # All extractors failed, return error info
+                result = {
+                    "raw_text": f"All extraction methods failed. Errors: {'; '.join(extraction_errors)}",
+                    "extraction_method": "extraction_failed",
+                    "errors": extraction_errors
+                }
             
             # Cleanup temp files
             if file_info.get("temp") and os.path.exists(file_info["path"]):

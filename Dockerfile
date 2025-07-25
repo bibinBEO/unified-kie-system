@@ -1,13 +1,15 @@
 # Multi-stage build for optimized production image
-FROM nvidia/cuda:12.1-devel-ubuntu22.04 as base
+FROM nvidia/cuda:12.1.0-devel-ubuntu22.04 as base
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Install system dependencies with retry logic
+RUN apt-get clean && \
+    apt-get update --allow-releaseinfo-change || apt-get update --allow-releaseinfo-change || true && \
+    apt-get install -y --no-install-recommends \
     python3.10 \
     python3.10-dev \
     python3-pip \
@@ -25,7 +27,7 @@ RUN apt-get update && apt-get install -y \
     libxext6 \
     libxrender-dev \
     libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
 # Create non-root user
 RUN useradd -m -s /bin/bash kie-user && \
@@ -39,19 +41,18 @@ WORKDIR /app
 COPY requirements.txt .
 
 # Install Python dependencies
-RUN pip3 install --no-cache-dir --upgrade pip && \
-    pip3 install --no-cache-dir -r requirements.txt
+RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel packaging
 
-# Install PyTorch with CUDA support
+# Install PyTorch with CUDA support first
 RUN pip3 install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
-# Install additional AI/ML packages
-RUN pip3 install --no-cache-dir \
-    transformers[torch] \
-    qwen-vl-utils \
-    flash-attn --no-build-isolation \
-    accelerate \
-    bitsandbytes
+# Install requirements without flash-attn first
+RUN sed '/flash-attn/d' requirements.txt > requirements_temp.txt && \
+    pip3 install --no-cache-dir -r requirements_temp.txt
+
+# Install flash-attention separately with proper build dependencies
+RUN pip3 install --no-cache-dir packaging ninja && \
+    pip3 install --no-cache-dir flash-attn --no-build-isolation
 
 # Copy application code
 COPY --chown=kie-user:kie-user . .

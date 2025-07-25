@@ -9,7 +9,7 @@ python-multipart==0.0.6
 
 # Document processing
 PyMuPDF==1.23.8  # fitz for PDF processing
-python-docx2txt==0.8
+docx2txt==0.8
 pandas==2.1.3
 openpyxl==3.1.2
 
@@ -21,16 +21,18 @@ opencv-python==4.8.1.78
 torch>=2.1.0
 torchvision>=0.16.0
 torchaudio>=2.1.0
-transformers[torch]==4.36.0
+transformers[torch]>=4.46.0
 qwen-vl-utils==0.0.1
-accelerate==0.25.0
+accelerate>=0.30.0
 bitsandbytes==0.41.3
+flash-attn>=2.0.0
 
 # EasyOCR fallback
-easyocr==1.7.0
+easyocr==1.7.1
+pytesseract==0.3.10
 
-# LayoutLM dependencies
-layoutlm==0.0.1
+# LayoutLM dependencies (using transformers implementation)
+# layoutlm package not needed - using transformers directly
 datasets==2.15.0
 seqeval==1.2.2
 

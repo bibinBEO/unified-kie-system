@@ -24,15 +24,14 @@ services:
       - LAYOUTLM_MODEL=microsoft/layoutlmv3-base
       - EASYOCR_LANGUAGES=en,de
       
-      # Processing configuration (optimized for 20GB vRAM)
-      - MAX_FILE_SIZE=104857600  # 100MB
-      - MAX_PAGES=50
-      - PROCESSING_TIMEOUT=600  # 10 minutes
+      # Processing configuration
+      - MAX_FILE_SIZE=52428800  # 50MB
+      - MAX_PAGES=20
+      - PROCESSING_TIMEOUT=300  # 5 minutes
       
-      # GPU configuration
-      - GPU_MEMORY_FRACTION=0.9
-      - CUDA_LAUNCH_BLOCKING=1
-      - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
+      # CPU-only configuration
+      - FORCE_CPU=true
+      - GPU_MEMORY_FRACTION=0.0
       
       # Storage configuration
       - CLEANUP_UPLOADS=true
@@ -45,13 +44,7 @@ services:
       # Logging
       - LOG_LEVEL=INFO
       
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+    # No GPU deployment section needed for CPU-only
     
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]

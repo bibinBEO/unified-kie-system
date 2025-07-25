@@ -1,7 +1,19 @@
 import torch
 import asyncio
-from transformers import AutoProcessor, AutoTokenizer, Qwen2VLForConditionalGeneration
-from qwen_vl_utils import process_vision_info
+from transformers import AutoProcessor, AutoTokenizer
+try:
+    from transformers import Qwen2VLForConditionalGeneration
+    QWEN_AVAILABLE = True
+except ImportError:
+    QWEN_AVAILABLE = False
+    print("Warning: Qwen2VLForConditionalGeneration not available, using fallback")
+    
+try:
+    from qwen_vl_utils import process_vision_info
+    QWEN_UTILS_AVAILABLE = True
+except ImportError:
+    QWEN_UTILS_AVAILABLE = False
+    print("Warning: qwen_vl_utils not available, using fallback")
 from PIL import Image
 import json
 import re
@@ -18,74 +30,148 @@ class NanoNetsExtractor:
         
     async def initialize(self):
         """Initialize the NanoNets OCR-s model"""
+        if not QWEN_AVAILABLE:
+            print("⚠️  NanoNets OCR-s not available - using fallback mode")
+            self.model = None
+            self.processor = None
+            self.tokenizer = None
+            return
+            
         def load_model():
             model_name = "nanonets/Nanonets-OCR-s"
             
-            model = Qwen2VLForConditionalGeneration.from_pretrained(
-                model_name,
-                device_map="auto",
-                torch_dtype="auto",
-                ignore_mismatched_sizes=True,
-                attn_implementation="flash_attention_2"
-            )
-            
-            processor = AutoProcessor.from_pretrained(model_name)
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
-            
-            return model, processor, tokenizer
+            try:
+                model = Qwen2VLForConditionalGeneration.from_pretrained(
+                    model_name,
+                    device_map="auto",
+                    torch_dtype="auto",
+                    ignore_mismatched_sizes=True,
+                    attn_implementation="flash_attention_2"
+                )
+                
+                processor = AutoProcessor.from_pretrained(model_name)
+                tokenizer = AutoTokenizer.from_pretrained(model_name)
+                
+                return model, processor, tokenizer
+            except Exception as e:
+                print(f"⚠️  Failed to load NanoNets OCR-s: {e}")
+                return None, None, None
         
         loop = asyncio.get_event_loop()
         self.model, self.processor, self.tokenizer = await loop.run_in_executor(None, load_model)
-        print(f"✅ NanoNets OCR-s loaded on {self.device}")
+        
+        if self.model is not None:
+            print(f"✅ NanoNets OCR-s loaded on {self.device}")
+        else:
+            print("⚠️  NanoNets OCR-s fallback mode active")
 
     async def extract(self, image: Image.Image, language: str = "auto") -> Dict[str, Any]:
         """Extract key information from image"""
+        try:
+            # Convert image to RGB if needed
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            
+            # Validate image dimensions and size
+            width, height = image.size
+            if width < 32 or height < 32:
+                raise ValueError(f"Image too small: {width}x{height}. Minimum size is 32x32")
+            if width > 4096 or height > 4096:
+                # Resize large images to prevent memory issues
+                image.thumbnail((2048, 2048), Image.Resampling.LANCZOS)
+                print(f"Resized large image from {width}x{height} to {image.size}")
+            
+            # Fallback mode when model is not available  
+            if not QWEN_AVAILABLE or self.model is None:
+                return await self._fallback_extract(image, language)
+        except Exception as img_error:
+            print(f"Image preprocessing error: {img_error}")
+            # Try fallback extraction for problematic images
+            return await self._fallback_extract(image, language)
+            
         prompt = self._create_extraction_prompt(language)
         
         def inference():
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "image", "image": image},
-                        {"type": "text", "text": prompt}
-                    ]
-                }
-            ]
-            
-            text = self.processor.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
-            )
-            
-            image_inputs, video_inputs = process_vision_info(messages)
-            
-            inputs = self.processor(
-                text=[text],
-                images=image_inputs,
-                videos=video_inputs,
-                padding=True,
-                return_tensors="pt"
-            )
-            
-            inputs = inputs.to(self.device)
-            
-            with torch.no_grad():
-                generated_ids = self.model.generate(
-                    **inputs,
-                    max_new_tokens=1024,
-                    do_sample=False,
-                    temperature=0.1
+            try:
+                messages = [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "image", "image": image},
+                            {"type": "text", "text": prompt}
+                        ]
+                    }
+                ]
+                
+                text = self.processor.apply_chat_template(
+                    messages, tokenize=False, add_generation_prompt=True
                 )
-            
-            generated_ids_trimmed = [
-                out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
-            ]
-            
-            response = self.processor.batch_decode(
-                generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
-            )[0]
-            
-            return response
+                
+                if QWEN_UTILS_AVAILABLE:
+                    try:
+                        image_inputs, video_inputs = process_vision_info(messages)
+                    except Exception as vision_error:
+                        print(f"Vision processing error: {vision_error}")
+                        # Fallback to direct image processing
+                        image_inputs = [image]
+                        video_inputs = None
+                else:
+                    image_inputs = [image]
+                    video_inputs = None
+                
+                try:
+                    inputs = self.processor(
+                        text=[text],
+                        images=image_inputs,
+                        videos=video_inputs,
+                        padding=True,
+                        return_tensors="pt"
+                    )
+                    
+                    inputs = inputs.to(self.device)
+                    
+                    # Clear CUDA cache before inference
+                    torch.cuda.empty_cache()
+                    
+                    with torch.no_grad():
+                        generated_ids = self.model.generate(
+                            **inputs,
+                            max_new_tokens=512,  # Reduced to prevent memory issues
+                            do_sample=False,
+                            temperature=0.1,
+                            pad_token_id=self.processor.tokenizer.eos_token_id
+                        )
+                except Exception as cuda_error:
+                    print(f"CUDA error in NanoNets inference: {cuda_error}")
+                    # Fallback to CPU inference
+                    try:
+                        inputs = inputs.to('cpu')
+                        with torch.no_grad():
+                            generated_ids = self.model.to('cpu').generate(
+                                **inputs,
+                                max_new_tokens=256,
+                                do_sample=False,
+                                temperature=0.1,
+                                pad_token_id=self.processor.tokenizer.eos_token_id
+                            )
+                        # Move model back to GPU
+                        self.model = self.model.to(self.device)
+                    except Exception as fallback_error:
+                        print(f"CPU fallback also failed: {fallback_error}")
+                        raise Exception(f"Both GPU and CPU inference failed: {cuda_error}")
+                
+                generated_ids_trimmed = [
+                    out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+                ]
+                
+                response = self.processor.batch_decode(
+                    generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
+                )[0]
+                
+                return response
+            except Exception as e:
+                print(f"⚠️  NanoNets extraction failed: {e}")
+                return f"Extraction failed: {str(e)}"
         
         loop = asyncio.get_event_loop()
         raw_response = await loop.run_in_executor(None, inference)
@@ -97,6 +183,19 @@ class NanoNetsExtractor:
             "raw_text": raw_response,
             "key_values": structured_data,
             "extraction_method": "nanonets_ocr_s",
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    async def _fallback_extract(self, image: Image.Image, language: str = "auto") -> Dict[str, Any]:
+        """Fallback extraction method when NanoNets is not available"""
+        return {
+            "raw_text": "NanoNets OCR-s model not available - using fallback mode",
+            "key_values": {
+                "status": "fallback_mode",
+                "message": "NanoNets OCR-s requires newer transformers version",
+                "recommendation": "Please update transformers to use full functionality"
+            },
+            "extraction_method": "nanonets_fallback",
             "timestamp": datetime.now().isoformat()
         }
 

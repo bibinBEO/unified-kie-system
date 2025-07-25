@@ -49,8 +49,8 @@ async def startup_event():
 @app.get("/", response_class=HTMLResponse)
 async def serve_frontend():
     """Serve the web interface"""
-    async with aiofiles.open("templates/index.html", "r") as f:
-        content = await f.read()
+    with open("templates/index.html", "r") as f:
+        content = f.read()
     return HTMLResponse(content=content)
 
 @app.post("/extract/file", response_model=Dict[str, Any])
@@ -78,9 +78,9 @@ async def extract_from_file(
     file_path = os.path.join(config.UPLOAD_DIR, f"{job_id}_{file.filename}")
     
     # Save uploaded file
-    async with aiofiles.open(file_path, 'wb') as f:
-        content = await file.read()
-        await f.write(content)
+    content = await file.read()
+    with open(file_path, 'wb') as f:
+        f.write(content)
     
     try:
         # Process document
@@ -103,8 +103,8 @@ async def extract_from_file(
         
         # Save results
         result_file = os.path.join(config.RESULTS_DIR, f"{job_id}_results.json")
-        async with aiofiles.open(result_file, 'w') as f:
-            await f.write(json.dumps(result, indent=2, ensure_ascii=False))
+        with open(result_file, 'w') as f:
+            f.write(json.dumps(result, indent=2, ensure_ascii=False))
         
         return result
         
@@ -144,11 +144,11 @@ async def extract_from_url(
         temp_file = os.path.join(config.UPLOAD_DIR, f"{job_id}_url_content{file_extension}")
         
         if file_extension == '.txt':
-            async with aiofiles.open(temp_file, 'w', encoding='utf-8') as f:
-                await f.write(response.text)
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                f.write(response.text)
         else:
-            async with aiofiles.open(temp_file, 'wb') as f:
-                await f.write(response.content)
+            with open(temp_file, 'wb') as f:
+                f.write(response.content)
         
         # Process document
         result = await processor.process_document(
@@ -170,8 +170,8 @@ async def extract_from_url(
         
         # Save results
         result_file = os.path.join(config.RESULTS_DIR, f"{job_id}_results.json")
-        async with aiofiles.open(result_file, 'w') as f:
-            await f.write(json.dumps(result, indent=2, ensure_ascii=False))
+        with open(result_file, 'w') as f:
+            f.write(json.dumps(result, indent=2, ensure_ascii=False))
         
         return result
         
@@ -193,8 +193,8 @@ async def get_results(job_id: str):
     if not os.path.exists(result_file):
         raise HTTPException(status_code=404, detail="Results not found")
     
-    async with aiofiles.open(result_file, 'r') as f:
-        content = await f.read()
+    with open(result_file, 'r') as f:
+        content = f.read()
         return json.loads(content)
 
 @app.get("/schemas", response_model=Dict[str, Any])
