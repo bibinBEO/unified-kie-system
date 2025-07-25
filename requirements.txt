@@ -1,7 +1,7 @@
 # Core framework
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
-pydantic==2.5.0
+pydantic==1.10.22
 
 # File handling
 aiofiles==23.2.1
@@ -18,14 +18,10 @@ Pillow==10.1.0
 opencv-python==4.8.1.78
 
 # OCR and AI models
-torch>=2.1.0
-torchvision>=0.16.0
-torchaudio>=2.1.0
 transformers[torch]>=4.46.0
 qwen-vl-utils==0.0.1
 accelerate>=0.30.0
 bitsandbytes==0.41.3
-flash-attn>=2.0.0
 
 # EasyOCR fallback
 easyocr==1.7.1
