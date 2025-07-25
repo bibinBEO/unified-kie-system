@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unified KIE Document Processing</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .card-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .upload-zone {
+            border: 2px dashed #007bff;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .upload-zone:hover {
+            border-color: #0056b3;
+            background-color: #f8f9fa;
+        }
+        .upload-zone.dragover {
+            border-color: #28a745;
+            background-color: #d4edda;
+        }
+        .result-card {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .json-viewer {
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        .loading-spinner {
+            display: none;
+        }
+        .progress-container {
+            display: none;
+            margin-top: 20px;
+        }
+        .extraction-type-card {
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .extraction-type-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .extraction-type-card.selected {
+            border: 2px solid #007bff;
+            background-color: #e3f2fd;
+        }
+        .stats-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+        }
+    </style>
+</head>
+<body class="bg-light">
+    <div class="container-fluid py-4">
+        <!-- Header -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="mb-0">
+                            <i class="fas fa-document-signature me-2"></i>
+                            Unified KIE Document Processing System
+                        </h2>
+                        <p class="mb-0 mt-2">Extract key information from PDF/DOC/TXT/CSV/URL using AI</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Left Panel - Input -->
+            <div class="col-md-6">
+                <!-- Extraction Type Selection -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-cogs me-2"></i>Extraction Type</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-2">
+                            <div class="col-6 col-md-3">
+                                <div class="card extraction-type-card selected" data-type="auto">
+                                    <div class="card-body text-center py-2">
+                                        <i class="fas fa-magic fa-2x text-primary mb-2"></i>
+                                        <div class="small fw-bold">Auto</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-6 col-md-3">
+                                <div class="card extraction-type-card" data-type="invoice">
+                                    <div class="card-body text-center py-2">
+                                        <i class="fas fa-file-invoice fa-2x text-success mb-2"></i>
+                                        <div class="small fw-bold">Invoice</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-6 col-md-3">
+                                <div class="card extraction-type-card" data-type="customs">
+                                    <div class="card-body text-center py-2">
+                                        <i class="fas fa-ship fa-2x text-warning mb-2"></i>
+                                        <div class="small fw-bold">Customs</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-6 col-md-3">
+                                <div class="card extraction-type-card" data-type="generic">
+                                    <div class="card-body text-center py-2">
+                                        <i class="fas fa-file-alt fa-2x text-info mb-2"></i>
+                                        <div class="small fw-bold">Generic</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- File Upload -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-upload me-2"></i>File Upload</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="upload-zone" id="uploadZone">
+                            <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
+                            <h5>Drop files here or click to upload</h5>
+                            <p class="text-muted mb-0">Supports: PDF, DOC, TXT, CSV, Images (PNG, JPG)</p>
+                            <input type="file" id="fileInput" class="d-none" accept=".pdf,.png,.jpg,.jpeg,.docx,.txt,.csv">
+                        </div>
+                        
+                        <div class="progress-container">
+                            <div class="progress">
+                                <div class="progress-bar" id="progressBar" role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <div class="text-center mt-2">
+                                <small id="progressText">Processing...</small>
+                            </div>
+                        </div>
+
+                        <div class="row mt-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Language</label>
+                                <select class="form-select" id="languageSelect">
+                                    <option value="auto">Auto Detect</option>
+                                    <option value="en">English</option>
+                                    <option value="de">German</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check mt-4">
+                                    <input class="form-check-input" type="checkbox" id="useSchema" checked>
+                                    <label class="form-check-label" for="useSchema">
+                                        Apply Schema Validation
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- URL Input -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-link me-2"></i>URL Processing</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="input-group">
+                            <input type="url" class="form-control" id="urlInput" placeholder="Enter URL to process...">
+                            <button class="btn btn-primary" type="button" id="processUrlBtn">
+                                <i class="fas fa-download me-1"></i>Process URL
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel - Results -->
+            <div class="col-md-6">
+                <!-- System Status -->
+                <div class="card mb-4">
+                    <div class="card-header position-relative">
+                        <h5 class="mb-0"><i class="fas fa-server me-2"></i>System Status</h5>
+                        <span class="badge bg-success stats-badge" id="statusBadge">Ready</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="row text-center">
+                            <div class="col-4">
+                                <div class="text-primary">
+                                    <i class="fas fa-microchip fa-2x"></i>
+                                    <div class="small mt-1" id="gpuStatus">GPU Ready</div>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="text-success">
+                                    <i class="fas fa-brain fa-2x"></i>
+                                    <div class="small mt-1" id="modelStatus">Models Loaded</div>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="text-info">
+                                    <i class="fas fa-chart-line fa-2x"></i>
+                                    <div class="small mt-1" id="processedCount">0 Processed</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Results -->
+                <div class="card result-card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-search me-2"></i>Extraction Results</h5>
+                    </div>
+                    <div class="card-body" id="resultsContainer">
+                        <div class="text-center text-muted py-5">
+                            <i class="fas fa-inbox fa-3x mb-3"></i>
+                            <h5>No results yet</h5>
+                            <p>Upload a document or enter a URL to start extraction</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Modal -->
+    <div class="modal fade" id="loadingModal" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-body text-center py-4">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <h5 id="loadingText">Processing document...</h5>
+                    <p class="text-muted mb-0" id="loadingSubtext">This may take a few moments</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let currentExtractionType = 'auto';
+        let loadingModal;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+            setupEventListeners();
+            updateSystemStatus();
+            setInterval(updateSystemStatus, 30000); // Update every 30 seconds
+        });
+
+        function setupEventListeners() {
+            // Extraction type selection
+            document.querySelectorAll('.extraction-type-card').forEach(card => {
+                card.addEventListener('click', function() {
+                    document.querySelectorAll('.extraction-type-card').forEach(c => c.classList.remove('selected'));
+                    this.classList.add('selected');
+                    currentExtractionType = this.dataset.type;
+                });
+            });
+
+            // File upload
+            const uploadZone = document.getElementById('uploadZone');
+            const fileInput = document.getElementById('fileInput');
+
+            uploadZone.addEventListener('click', () => fileInput.click());
+            
+            uploadZone.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                this.classList.add('dragover');
+            });
+
+            uploadZone.addEventListener('dragleave', function(e) {
+                e.preventDefault();
+                this.classList.remove('dragover');
+            });
+
+            uploadZone.addEventListener('drop', function(e) {
+                e.preventDefault();
+                this.classList.remove('dragover');
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    handleFileUpload(files[0]);
+                }
+            });
+
+            fileInput.addEventListener('change', function(e) {
+                if (e.target.files.length > 0) {
+                    handleFileUpload(e.target.files[0]);
+                }
+            });
+
+            // URL processing
+            document.getElementById('processUrlBtn').addEventListener('click', handleUrlProcessing);
+        }
+
+        async function handleFileUpload(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('extraction_type', currentExtractionType);
+            formData.append('language', document.getElementById('languageSelect').value);
+            formData.append('use_schema', document.getElementById('useSchema').checked);
+
+            showLoading('Processing document...', 'Extracting key information using AI models');
+
+            try {
+                const response = await fetch('/extract/file', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    displayResults(result);
+                } else {
+                    showError(result.detail || 'Processing failed');
+                }
+            } catch (error) {
+                showError('Network error: ' + error.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function handleUrlProcessing() {
+            const url = document.getElementById('urlInput').value.trim();
+            if (!url) {
+                alert('Please enter a URL');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('url', url);
+            formData.append('extraction_type', currentExtractionType);
+            formData.append('language', document.getElementById('languageSelect').value);
+            formData.append('use_schema', document.getElementById('useSchema').checked);
+
+            showLoading('Fetching URL content...', 'Downloading and processing content');
+
+            try {
+                const response = await fetch('/extract/url', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    displayResults(result);
+                    document.getElementById('urlInput').value = '';
+                } else {
+                    showError(result.detail || 'Processing failed');
+                }
+            } catch (error) {
+                showError('Network error: ' + error.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function displayResults(result) {
+            const container = document.getElementById('resultsContainer');
+            
+            // Create tabs for different views
+            const tabsHtml = `
+                <ul class="nav nav-tabs mb-3" id="resultTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#overview-tab">
+                            <i class="fas fa-eye me-1"></i>Overview
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#structured-tab">
+                            <i class="fas fa-table me-1"></i>Structured
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#raw-tab">
+                            <i class="fas fa-code me-1"></i>Raw JSON
+                        </button>
+                    </li>
+                </ul>
+                
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="overview-tab">
+                        ${generateOverviewTab(result)}
+                    </div>
+                    <div class="tab-pane fade" id="structured-tab">
+                        ${generateStructuredTab(result)}
+                    </div>
+                    <div class="tab-pane fade" id="raw-tab">
+                        <div class="json-viewer">
+                            <pre>${JSON.stringify(result, null, 2)}</pre>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            container.innerHTML = tabsHtml;
+        }
+
+        function generateOverviewTab(result) {
+            let html = `
+                <div class="mb-3">
+                    <div class="row">
+                        <div class="col-sm-6">
+                            <strong>Job ID:</strong> ${result.job_id || 'N/A'}
+                        </div>
+                        <div class="col-sm-6">
+                            <strong>Type:</strong> <span class="badge bg-primary">${result.extraction_type || 'auto'}</span>
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col-sm-6">
+                            <strong>Processed:</strong> ${new Date(result.timestamp).toLocaleString()}
+                        </div>
+                        <div class="col-sm-6">
+                            <strong>Method:</strong> ${result.processing_info?.strategy_used || 'N/A'}
+                        </div>
+                    </div>
+                </div>
+                <hr>
+            `;
+
+            // Show key fields based on extraction type
+            if (result.structured_data) {
+                html += '<h6><i class="fas fa-database me-2"></i>Key Information:</h6>';
+                html += generateKeyValueTable(result.structured_data);
+            } else if (result.key_values) {
+                html += '<h6><i class="fas fa-key me-2"></i>Extracted Fields:</h6>';
+                html += generateKeyValueTable(result.key_values);
+            }
+
+            return html;
+        }
+
+        function generateStructuredTab(result) {
+            if (result.structured_data) {
+                return `
+                    <h6><i class="fas fa-sitemap me-2"></i>Structured Data:</h6>
+                    <div class="json-viewer">
+                        <pre>${JSON.stringify(result.structured_data, null, 2)}</pre>
+                    </div>
+                `;
+            }
+            return '<p class="text-muted">No structured data available</p>';
+        }
+
+        function generateKeyValueTable(data) {
+            if (!data || typeof data !== 'object') return '<p class="text-muted">No data available</p>';
+            
+            let html = '<div class="table-responsive"><table class="table table-sm table-striped">';
+            
+            function addToTable(obj, prefix = '') {
+                for (const [key, value] of Object.entries(obj)) {
+                    const displayKey = prefix ? `${prefix}.${key}` : key;
+                    
+                    if (value && typeof value === 'object' && !Array.isArray(value)) {
+                        addToTable(value, displayKey);
+                    } else {
+                        const displayValue = Array.isArray(value) ? value.join(', ') : 
+                                           value !== null && value !== undefined ? String(value) : 'N/A';
+                        html += `
+                            <tr>
+                                <td><strong>${displayKey}</strong></td>
+                                <td>${displayValue}</td>
+                            </tr>
+                        `;
+                    }
+                }
+            }
+            
+            addToTable(data);
+            html += '</table></div>';
+            
+            return html;
+        }
+
+        function showLoading(title, subtitle) {
+            document.getElementById('loadingText').textContent = title;
+            document.getElementById('loadingSubtext').textContent = subtitle;
+            loadingModal.show();
+        }
+
+        function hideLoading() {
+            loadingModal.hide();
+        }
+
+        function showError(message) {
+            const container = document.getElementById('resultsContainer');
+            container.innerHTML = `
+                <div class="alert alert-danger" role="alert">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Error:</strong> ${message}
+                </div>
+            `;
+        }
+
+        async function updateSystemStatus() {
+            try {
+                const [healthResponse, statsResponse] = await Promise.all([
+                    fetch('/health'),
+                    fetch('/stats')
+                ]);
+
+                const health = await healthResponse.json();
+                const stats = await statsResponse.json();
+
+                // Update status indicators
+                document.getElementById('statusBadge').textContent = health.status === 'healthy' ? 'Online' : 'Offline';
+                document.getElementById('statusBadge').className = `badge ${health.status === 'healthy' ? 'bg-success' : 'bg-danger'} stats-badge`;
+                
+                // Update model status
+                const modelCount = Object.values(health.models_loaded || {}).filter(Boolean).length;
+                document.getElementById('modelStatus').textContent = `${modelCount} Models`;
+                
+                // Update processed count
+                document.getElementById('processedCount').textContent = `${stats.total_processed || 0} Processed`;
+                
+                // Update GPU status
+                document.getElementById('gpuStatus').textContent = health.gpu_available ? 'GPU Ready' : 'CPU Only';
+                
+            } catch (error) {
+                document.getElementById('statusBadge').textContent = 'Offline';
+                document.getElementById('statusBadge').className = 'badge bg-danger stats-badge';
+            }
+        }
+    </script>
+</body>
+</html>
