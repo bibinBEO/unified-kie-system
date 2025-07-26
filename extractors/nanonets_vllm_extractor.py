@@ -42,15 +42,20 @@ class NanoNetsVLLMExtractor:
             print(f"🧹 CUDA cache cleared. Available memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
         
         try:
-            # Initialize vLLM engine with conservative settings
+            # Initialize vLLM engine with performance-optimized settings
             self.model = LLM(
                 model=model_name, 
                 trust_remote_code=True,
                 tensor_parallel_size=1,
-                gpu_memory_utilization=0.8,  # Conservative memory usage
-                max_model_len=4096,  # Reduced context length
-                enforce_eager=True,  # Disable CUDA graphs for stability
-                disable_custom_all_reduce=True  # Better compatibility
+                gpu_memory_utilization=0.95,  # Higher GPU utilization for speed
+                max_model_len=8192,  # Increased context for better processing
+                enforce_eager=False,  # Enable CUDA graphs for performance
+                disable_custom_all_reduce=False,  # Enable optimizations
+                enable_chunked_prefill=True,  # Chunked prefill for efficiency
+                max_num_batched_tokens=8192,  # Larger batch processing
+                max_num_seqs=64,  # More concurrent sequences
+                disable_log_stats=True,  # Reduce logging overhead
+                use_v2_block_manager=True  # New block manager for efficiency
             )
             print("DEBUG: vLLM LLM initialized with conservative settings.")
             self.processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
@@ -85,14 +90,26 @@ class NanoNetsVLLMExtractor:
         
         text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         
-        sampling_params = SamplingParams(temperature=0.7, top_p=0.95, max_tokens=1024)
+        sampling_params = SamplingParams(
+            temperature=0.1,  # Lower temperature for faster, more deterministic output
+            top_p=0.9, 
+            max_tokens=2048,  # Increased for complete extraction
+            use_beam_search=False,  # Disable beam search for speed
+            skip_special_tokens=True  # Skip special tokens for efficiency
+        )
         
         try:
-            # Clear CUDA cache before generation
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            # Pre-process image for optimal performance
+            if hasattr(image, 'size'):
+                width, height = image.size
+                # Resize large images for faster processing
+                if width > 2048 or height > 2048:
+                    ratio = min(2048/width, 2048/height)
+                    new_size = (int(width * ratio), int(height * ratio))
+                    image = image.resize(new_size, Image.Resampling.LANCZOS)
+                    print(f"🖼️ Resized image from {width}x{height} to {new_size[0]}x{new_size[1]}")
             
-            # Generate with error recovery
+            # Generate with optimized settings
             outputs = self.model.generate([text], sampling_params)
             raw_response = outputs[0].outputs[0].text
             structured_data = self._parse_response(raw_response)
