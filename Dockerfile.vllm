@@ -1,10 +1,18 @@
-# Multi-stage build for optimized production image
-FROM nvidia/cuda:12.1.0-devel-ubuntu22.04 as base
+# Multi-stage build for optimized production image with vLLM support
+FROM nvidia/cuda:12.1.0-devel-ubuntu22.04 AS base
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=${CUDA_HOME}/bin:${PATH}
+ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
+ENV TORCH_CUDA_ARCH_LIST="8.9"
+ENV MAX_JOBS=4
+ENV TORCH_USE_CUDA_DSA=1
+ENV CUDA_LAUNCH_BLOCKING=1
+ENV PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
 
 # Install system dependencies with retry logic
 RUN apt-get clean && \
@@ -27,6 +35,7 @@ RUN apt-get clean && \
     libxext6 \
     libxrender-dev \
     libgomp1 \
+    cmake \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
 # Create non-root user
@@ -37,12 +46,20 @@ RUN useradd -m -s /bin/bash kie-user && \
 # Set working directory
 WORKDIR /app
 
+# Copy requirements first for better caching
+COPY requirements.txt .
+
 # Install Python dependencies
 RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel packaging
 
-# Install torch and vllm
-RUN pip3 install --no-cache-dir torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cu118 && \
-    pip3 install --no-cache-dir vllm==0.2.1.post1 ray==2.8.0
+# Install torch with CUDA 12.2 support
+RUN pip3 install --no-cache-dir torch==2.2.0 torchvision==0.17.0 torchaudio==2.2.0 --index-url https://download.pytorch.org/whl/cu121
+
+# Install vLLM without flash-attn to avoid compatibility issues
+RUN pip3 install --no-cache-dir vllm==0.2.7
+
+# Install remaining requirements from requirements.txt
+RUN pip3 install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY --chown=kie-user:kie-user . .

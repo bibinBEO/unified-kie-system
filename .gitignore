@@ -114,4 +114,4 @@ deployment/ssl/
 
 # Local configuration
 config.local.py
-docker-compose.override.yml
+docker-compose.override.ymldocext/

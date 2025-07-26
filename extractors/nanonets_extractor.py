@@ -4,11 +4,25 @@ from transformers import AutoProcessor, AutoTokenizer
 import signal
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 try:
-    from transformers import Qwen2VLForConditionalGeneration
+    # Import AutoConfig first to detect model architecture
+    from transformers import AutoConfig, AutoModelForVision2Seq
+    
+    # Try to import the correct Qwen architecture based on model config
+    try:
+        from transformers import Qwen2_5_VLForConditionalGeneration as QwenVLModel
+        QWEN25_AVAILABLE = True
+        print("✅ Using Qwen2.5-VL architecture (correct for Nanonets-OCR-s)")
+    except ImportError:
+        from transformers import Qwen2VLForConditionalGeneration as QwenVLModel
+        QWEN25_AVAILABLE = False
+        print("⚠️  Fallback to Qwen2-VL architecture (may cause tensor mismatches)")
+    
     QWEN_AVAILABLE = True
 except ImportError:
     QWEN_AVAILABLE = False
-    print("Warning: Qwen2VLForConditionalGeneration not available, using fallback")
+    QWEN25_AVAILABLE = False
+    QwenVLModel = None
+    print("Warning: Qwen VL models not available, using fallback")
     
 try:
     from qwen_vl_utils import process_vision_info
@@ -68,13 +82,28 @@ class NanoNetsExtractor:
                 os.environ['TORCH_USE_CUDA_DSA'] = '1'  # Enable device-side assertions for debugging
                 print("🔧 CUDA debugging enabled: CUDA_LAUNCH_BLOCKING=1, TORCH_USE_CUDA_DSA=1")
                 
+                # First, check the model's actual architecture to avoid tensor mismatches
+                print("🔍 Detecting model architecture...")
+                config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+                model_arch = config.architectures[0] if config.architectures else "unknown"
+                print(f"📋 Model architecture: {model_arch}")
+                
+                # Verify we're using the correct model class
+                if "Qwen2_5_VL" in model_arch and not QWEN25_AVAILABLE:
+                    print("⚠️  WARNING: Model requires Qwen2.5-VL but only Qwen2-VL available!")
+                    print("   This will likely cause CUDA tensor shape mismatches!")
+                elif "Qwen2_5_VL" in model_arch and QWEN25_AVAILABLE:
+                    print("✅ Correct architecture match: Qwen2.5-VL")
+                elif "Qwen2VL" in model_arch and not QWEN25_AVAILABLE:
+                    print("✅ Correct architecture match: Qwen2-VL")
+                
                 # Proper dtype configuration for Flash Attention
                 torch_dtype = torch.bfloat16 if self.device == "cuda" else torch.float32
                 
                 # Load model WITHOUT Flash Attention to avoid CUDA issues
                 if self.device == "cuda":
                     print("🔧 Loading GPU model WITHOUT Flash Attention for stability...")
-                    model = Qwen2VLForConditionalGeneration.from_pretrained(
+                    model = QwenVLModel.from_pretrained(
                         model_name,
                         torch_dtype=torch_dtype,
                         device_map="cuda:0",
@@ -86,7 +115,7 @@ class NanoNetsExtractor:
                     print("✅ Loaded on GPU without Flash Attention")
                 else:
                     # CPU loading
-                    model = Qwen2VLForConditionalGeneration.from_pretrained(
+                    model = QwenVLModel.from_pretrained(
                         model_name,
                         torch_dtype=torch_dtype,
                         ignore_mismatched_sizes=True,
@@ -106,7 +135,7 @@ class NanoNetsExtractor:
                     print("🔄 Attempting CPU fallback due to GPU loading issues...")
                     self.device = "cpu"
                     try:
-                        model = Qwen2VLForConditionalGeneration.from_pretrained(
+                        model = QwenVLModel.from_pretrained(
                             model_name,
                             torch_dtype=torch.float32,
                             ignore_mismatched_sizes=True,

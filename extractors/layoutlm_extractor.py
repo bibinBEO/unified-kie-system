@@ -48,13 +48,13 @@ class LayoutLMExtractor:
             entities = []
             for i, (token, pred) in enumerate(zip(tokens, predictions)):
                 if token not in ['[CLS]', '[SEP]', '[PAD]']:
-                    max_label_idx = pred.argmax()
-                    confidence = pred[max_label_idx]
+                    max_label_idx = int(pred.argmax())  # Convert numpy int to Python int
+                    confidence = float(pred[max_label_idx])  # Convert numpy float to Python float
                     if confidence > 0.5:  # Confidence threshold
                         entities.append({
                             "token": token,
                             "label": f"LABEL_{max_label_idx}",
-                            "confidence": float(confidence)
+                            "confidence": confidence
                         })
             
             return entities

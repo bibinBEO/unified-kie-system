@@ -27,7 +27,7 @@ class NanoNetsVLLMExtractor:
         print(f"🚀 NanoNets vLLM initializing on {self.device.upper()}")
 
     async def initialize(self):
-        """Initialize the vLLM engine and processor."""
+        """Initialize the vLLM engine and processor with CUDA error handling."""
         print(f"DEBUG: VLLM_AVAILABLE={VLLM_AVAILABLE}, self.device={self.device}")
         if not VLLM_AVAILABLE or self.device != "cuda":
             print("⚠️  vLLM is not available or not running on GPU. Fallback mode.")
@@ -35,10 +35,24 @@ class NanoNetsVLLMExtractor:
 
         model_name = "nanonets/Nanonets-OCR-s"
         print(f"DEBUG: Attempting to initialize vLLM with model: {model_name}")
+        
+        # Clear CUDA cache before initialization
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            print(f"🧹 CUDA cache cleared. Available memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+        
         try:
-            # Initialize vLLM engine
-            self.model = LLM(model=model_name, trust_remote_code=True)
-            print("DEBUG: vLLM LLM initialized.")
+            # Initialize vLLM engine with conservative settings
+            self.model = LLM(
+                model=model_name, 
+                trust_remote_code=True,
+                tensor_parallel_size=1,
+                gpu_memory_utilization=0.8,  # Conservative memory usage
+                max_model_len=4096,  # Reduced context length
+                enforce_eager=True,  # Disable CUDA graphs for stability
+                disable_custom_all_reduce=True  # Better compatibility
+            )
+            print("DEBUG: vLLM LLM initialized with conservative settings.")
             self.processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
             print("✅ vLLM engine and processor initialized successfully.")
         except Exception as e:
@@ -46,6 +60,9 @@ class NanoNetsVLLMExtractor:
             print(f"⚠️  Failed to initialize vLLM engine: {type(e).__name__}: {e}")
             traceback.print_exc()
             self.model = None
+            # Clear cache on failure
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
     async def extract(self, image: Image.Image, language: str = "auto") -> Dict[str, Any]:
         """Extract key information from an image using vLLM."""
@@ -71,6 +88,11 @@ class NanoNetsVLLMExtractor:
         sampling_params = SamplingParams(temperature=0.7, top_p=0.95, max_tokens=1024)
         
         try:
+            # Clear CUDA cache before generation
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+            # Generate with error recovery
             outputs = self.model.generate([text], sampling_params)
             raw_response = outputs[0].outputs[0].text
             structured_data = self._parse_response(raw_response)
@@ -81,23 +103,56 @@ class NanoNetsVLLMExtractor:
                 "extraction_method": "nanonets_vllm",
                 "timestamp": datetime.now().isoformat()
             }
+        except RuntimeError as e:
+            error_str = str(e)
+            print(f"⚠️  CUDA RuntimeError in vLLM extraction: {error_str}")
+            
+            # Handle specific CUDA errors
+            if "device-side assert" in error_str or "CUDA error" in error_str:
+                print("🔧 CUDA device-side assert detected. Clearing cache and falling back...")
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize()
+                
+                print("🔄 Attempting fallback to standard NanoNets extractor...")
+                return await self._fallback_extract(image, language)
+            else:
+                raise e  # Re-raise if not a known CUDA issue
         except Exception as e:
-            print(f"⚠️  vLLM extraction failed: {e}")
+            print(f"⚠️  General vLLM extraction failed: {e}")
             return {
                 "raw_text": f"Extraction failed: {e}",
-                "key_values": {"error": str(e)},
+                "key_values": {"error": str(e), "error_type": type(e).__name__},
                 "extraction_method": "nanonets_vllm_error",
                 "timestamp": datetime.now().isoformat()
             }
 
     async def _fallback_extract(self, image: Image.Image, language: str = "auto") -> Dict[str, Any]:
-        """Fallback extraction method when vLLM is not available."""
-        return {
-            "raw_text": "vLLM not available or failed to initialize.",
-            "key_values": {"status": "fallback_mode"},
-            "extraction_method": "nanonets_fallback",
-            "timestamp": datetime.now().isoformat()
-        }
+        """Fallback extraction method using standard NanoNets extractor."""
+        try:
+            # Import and use the standard NanoNets extractor as fallback
+            from .nanonets_extractor import NanoNetsExtractor
+            fallback_extractor = NanoNetsExtractor(self.config)
+            await fallback_extractor.initialize()
+            result = await fallback_extractor.extract(image, language)
+            
+            # Mark as fallback method
+            result["extraction_method"] = "nanonets_fallback_from_vllm"
+            result["fallback_reason"] = "vLLM unavailable or CUDA error"
+            
+            return result
+        except Exception as e:
+            print(f"⚠️  Fallback extraction also failed: {e}")
+            return {
+                "raw_text": "Both vLLM and fallback extraction failed.",
+                "key_values": {
+                    "status": "fallback_failed", 
+                    "vllm_error": "CUDA device-side assert or initialization failure",
+                    "fallback_error": str(e)
+                },
+                "extraction_method": "nanonets_complete_failure",
+                "timestamp": datetime.now().isoformat()
+            }
 
     def _create_extraction_prompt(self, language: str) -> str:
         """Create extraction prompt based on language and document type."""

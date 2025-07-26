@@ -11,13 +11,16 @@ import fitz  # PyMuPDF
 import docx2txt
 import pandas as pd
 import io
+import numpy as np
 
 from extractors.nanonets_extractor import NanoNetsExtractor
+from extractors.nanonets_ocr_s_extractor import NanoNetsOCRSExtractor
 from extractors.layoutlm_extractor import LayoutLMExtractor
 from extractors.easyocr_extractor import EasyOCRExtractor
 from schema_manager import SchemaManager
 from utils.text_processing import TextProcessor
 from utils.file_converter import FileConverter
+from utils.json_encoder import sanitize_for_json
 
 class UnifiedDocumentProcessor:
     def __init__(self, config):
@@ -28,6 +31,7 @@ class UnifiedDocumentProcessor:
         
         # Extractors
         self.nanonets_extractor = None
+        self.nanonets_ocr_s_extractor = None
         self.layoutlm_extractor = None
         self.easyocr_extractor = None
         
@@ -38,14 +42,25 @@ class UnifiedDocumentProcessor:
         print(f"🚀 Initializing Unified Document Processor on {self.device}")
         if self.gpu_available:
             print(f"   GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f}GB")
+    
+    def _sanitize_for_json(self, obj):
+        """Convert numpy types to JSON serializable types"""
+        return sanitize_for_json(obj)
 
     async def initialize(self):
         """Initialize all extractors based on available resources"""
         try:
-            # Always initialize NanoNets (best performance)
+            # Initialize NanoNets OCR-s (best performance with proper vLLM for KIE)
+            print("🔄 Initializing NanoNets OCR-s for KIE...")
+            self.nanonets_ocr_s_extractor = NanoNetsOCRSExtractor(self.config)
+            await self.nanonets_ocr_s_extractor.initialize()
+            print("✅ NanoNets OCR-s initialized with vLLM server")
+            
+            # Initialize standard NanoNets as backup
+            print("🔄 Initializing standard NanoNets as backup...")
             self.nanonets_extractor = NanoNetsExtractor(self.config)
             await self.nanonets_extractor.initialize()
-            print("✅ NanoNets OCR-s initialized")
+            print("✅ NanoNets standard initialized")
             
             # Initialize LayoutLM if enough GPU memory
             if self.gpu_available:
@@ -106,7 +121,7 @@ class UnifiedDocumentProcessor:
             "timestamp": datetime.now().isoformat()
         }
         
-        return merged_result
+        return self._sanitize_for_json(merged_result)
 
     async def _prepare_document(self, file_path: str) -> List[Dict[str, Any]]:
         """Convert document to processable format(s)"""
@@ -192,8 +207,10 @@ class UnifiedDocumentProcessor:
         if file_ext in ['.csv', '.txt']:
             return "direct"
         
-        # For document images, use best available OCR
-        if extraction_type == "customs" and self.nanonets_extractor:
+        # Prioritize OCR-s for KIE (Key Information Extraction)
+        if self.nanonets_ocr_s_extractor:
+            return "nanonets_ocr_s"  # Best for KIE with proper vLLM
+        elif extraction_type == "customs" and self.nanonets_extractor:
             return "nanonets"  # Best for German customs docs
         elif extraction_type == "invoice" and self.layoutlm_extractor:
             return "layoutlm"  # Best for invoices
@@ -234,15 +251,26 @@ class UnifiedDocumentProcessor:
             # Try extractors in order of preference with automatic fallback
             extractors_to_try = []
             
-            if strategy == "nanonets" and self.nanonets_extractor:
+            if strategy == "nanonets_ocr_s" and self.nanonets_ocr_s_extractor:
+                # Primary strategy: OCR-s for KIE
+                extractors_to_try = [
+                    ("nanonets_ocr_s", self.nanonets_ocr_s_extractor),
+                    ("nanonets", self.nanonets_extractor) if self.nanonets_extractor else None,
+                    ("layoutlm", self.layoutlm_extractor) if self.layoutlm_extractor else None,
+                    ("easyocr", self.easyocr_extractor)
+                ]
+            elif strategy == "nanonets" and self.nanonets_extractor:
+                # Standard nanonets strategy
                 extractors_to_try = [
                     ("nanonets", self.nanonets_extractor),
+                    ("nanonets_ocr_s", self.nanonets_ocr_s_extractor) if self.nanonets_ocr_s_extractor else None,
                     ("layoutlm", self.layoutlm_extractor) if self.layoutlm_extractor else None,
                     ("easyocr", self.easyocr_extractor)
                 ]
             elif strategy == "layoutlm" and self.layoutlm_extractor:
                 extractors_to_try = [
                     ("layoutlm", self.layoutlm_extractor),
+                    ("nanonets_ocr_s", self.nanonets_ocr_s_extractor) if self.nanonets_ocr_s_extractor else None,
                     ("easyocr", self.easyocr_extractor)
                 ]
             else:
@@ -277,7 +305,7 @@ class UnifiedDocumentProcessor:
                 os.unlink(file_info["path"])
             
             result["page"] = file_info["page"]
-            return result
+            return self._sanitize_for_json(result)
         
         else:
             raise ValueError(f"Unknown file type: {file_info['type']}")
@@ -330,6 +358,7 @@ class UnifiedDocumentProcessor:
     async def get_model_status(self) -> Dict[str, bool]:
         """Get status of all loaded models"""
         return {
+            "nanonets_ocr_s": self.nanonets_ocr_s_extractor is not None,
             "nanonets": self.nanonets_extractor is not None,
             "layoutlm": self.layoutlm_extractor is not None,
             "easyocr": self.easyocr_extractor is not None
@@ -342,13 +371,13 @@ class UnifiedDocumentProcessor:
         memory_info = process.memory_info()
         
         result = {
-            "ram_usage_mb": memory_info.rss / 1024 / 1024,
-            "cpu_percent": process.cpu_percent()
+            "ram_usage_mb": float(memory_info.rss / 1024 / 1024),
+            "cpu_percent": float(process.cpu_percent())
         }
         
         if self.gpu_available:
-            result["gpu_memory_allocated_mb"] = torch.cuda.memory_allocated() / 1024 / 1024
-            result["gpu_memory_reserved_mb"] = torch.cuda.memory_reserved() / 1024 / 1024
+            result["gpu_memory_allocated_mb"] = float(torch.cuda.memory_allocated() / 1024 / 1024)
+            result["gpu_memory_reserved_mb"] = float(torch.cuda.memory_reserved() / 1024 / 1024)
         
         return result
 
@@ -359,8 +388,8 @@ class UnifiedDocumentProcessor:
         
         props = torch.cuda.get_device_properties(0)
         return {
-            "total_memory_gb": props.total_memory / 1024**3,
-            "allocated_gb": torch.cuda.memory_allocated() / 1024**3,
-            "reserved_gb": torch.cuda.memory_reserved() / 1024**3,
-            "free_gb": (props.total_memory - torch.cuda.memory_reserved()) / 1024**3
+            "total_memory_gb": float(props.total_memory / 1024**3),
+            "allocated_gb": float(torch.cuda.memory_allocated() / 1024**3),
+            "reserved_gb": float(torch.cuda.memory_reserved() / 1024**3),
+            "free_gb": float((props.total_memory - torch.cuda.memory_reserved()) / 1024**3)
         }

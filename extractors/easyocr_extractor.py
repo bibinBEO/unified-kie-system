@@ -44,8 +44,8 @@ class EasyOCRExtractor:
                 full_text += text + " "
                 text_blocks.append({
                     "text": text,
-                    "bbox": bbox,
-                    "confidence": confidence
+                    "bbox": [[float(x), float(y)] for x, y in bbox],  # Convert numpy coordinates
+                    "confidence": float(confidence)  # Convert numpy float to Python float
                 })
         
         # Extract key-value pairs from text
