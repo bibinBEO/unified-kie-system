@@ -212,7 +212,7 @@ class GPUMemoryManager:
                 torch.cuda.empty_cache()
     
     async def _smart_cache_clear(self):
-        \"\"\"Smart CUDA cache clearing based on strategy\"\"\"
+        """Smart CUDA cache clearing based on strategy"""
         
         if not torch.cuda.is_available():
             return
@@ -235,9 +235,9 @@ class GPUMemoryManager:
             torch.cuda.synchronize()
     
     async def _emergency_cleanup(self):
-        \"\"\"Emergency cleanup when CUDA OOM occurs\"\"\"
+        """Emergency cleanup when CUDA OOM occurs"""
         
-        print(\"🚨 Emergency GPU memory cleanup\")
+        print("🚨 Emergency GPU memory cleanup")
         
         # Clear all cached models
         for model_key in list(self.model_cache.keys()):
@@ -255,67 +255,67 @@ class GPUMemoryManager:
             # Reset memory stats
             torch.cuda.reset_peak_memory_stats()
         
-        print(\"✅ Emergency cleanup completed\")
+        print("✅ Emergency cleanup completed")
     
     def _get_gpu_memory_usage(self) -> float:
-        \"\"\"Get current GPU memory usage in MB\"\"\"
+        """Get current GPU memory usage in MB"""
         if torch.cuda.is_available():
             return torch.cuda.memory_allocated() / (1024 ** 2)
         return 0.0
     
     def _get_total_gpu_memory(self) -> float:
-        \"\"\"Get total GPU memory in MB\"\"\"
+        """Get total GPU memory in MB"""
         if torch.cuda.is_available():
             return torch.cuda.get_device_properties(0).total_memory / (1024 ** 2)
         return 0.0
     
     def _get_model_memory_usage(self) -> float:
-        \"\"\"Estimate memory usage of currently loaded models\"\"\"
+        """Estimate memory usage of currently loaded models"""
         return self._get_gpu_memory_usage()
     
     def get_memory_stats(self) -> Dict[str, Any]:
-        \"\"\"Get comprehensive memory statistics\"\"\"
+        """Get comprehensive memory statistics"""
         
         stats = {
-            \"cached_models\": len(self.model_cache),
-            \"strategy\": self.strategy.value,
-            \"cleanup_threshold\": self.cleanup_threshold,
-            \"max_cache_size\": self.max_cache_size
+            "cached_models": len(self.model_cache),
+            "strategy": self.strategy.value,
+            "cleanup_threshold": self.cleanup_threshold,
+            "max_cache_size": self.max_cache_size
         }
         
         if torch.cuda.is_available():
             stats.update({
-                \"gpu_memory_allocated_mb\": torch.cuda.memory_allocated() / (1024 ** 2),
-                \"gpu_memory_reserved_mb\": torch.cuda.memory_reserved() / (1024 ** 2),
-                \"gpu_memory_total_mb\": torch.cuda.get_device_properties(0).total_memory / (1024 ** 2),
-                \"gpu_utilization_percent\": torch.cuda.memory_allocated() / torch.cuda.get_device_properties(0).total_memory * 100
+                "gpu_memory_allocated_mb": torch.cuda.memory_allocated() / (1024 ** 2),
+                "gpu_memory_reserved_mb": torch.cuda.memory_reserved() / (1024 ** 2),
+                "gpu_memory_total_mb": torch.cuda.get_device_properties(0).total_memory / (1024 ** 2),
+                "gpu_utilization_percent": torch.cuda.memory_allocated() / torch.cuda.get_device_properties(0).total_memory * 100
             })
         
         # Add system memory
         memory = psutil.virtual_memory()
         stats.update({
-            \"system_memory_used_mb\": memory.used / (1024 ** 2),
-            \"system_memory_total_mb\": memory.total / (1024 ** 2),
-            \"system_memory_percent\": memory.percent
+            "system_memory_used_mb": memory.used / (1024 ** 2),
+            "system_memory_total_mb": memory.total / (1024 ** 2),
+            "system_memory_percent": memory.percent
         })
         
         # Add cache info
         cache_info = []
         for model_key, entry in self.model_cache.items():
             cache_info.append({
-                \"model\": model_key,
-                \"last_used_seconds_ago\": time.time() - entry.last_used,
-                \"access_count\": entry.access_count,
-                \"load_time\": entry.load_time,
-                \"memory_usage_mb\": entry.memory_usage_mb
+                "model": model_key,
+                "last_used_seconds_ago": time.time() - entry.last_used,
+                "access_count": entry.access_count,
+                "load_time": entry.load_time,
+                "memory_usage_mb": entry.memory_usage_mb
             })
         
-        stats[\"cache_details\"] = cache_info
+        stats["cache_details"] = cache_info
         
         return stats
     
     async def optimize_for_inference(self):
-        \"\"\"Optimize GPU settings for inference\"\"\"
+        """Optimize GPU settings for inference"""
         
         if torch.cuda.is_available():
             # Enable optimizations
@@ -331,19 +331,19 @@ class GPUMemoryManager:
                 else:  # CONSERVATIVE
                     torch.cuda.set_per_process_memory_fraction(0.75)
             
-            print(f\"🚀 GPU optimized for {self.strategy.value} inference\")
+            print(f"🚀 GPU optimized for {self.strategy.value} inference")
 
 class ModelPreloader:
-    \"\"\"Preload and warm up models for faster inference\"\"\"
+    """Preload and warm up models for faster inference"""
     
     def __init__(self, memory_manager: GPUMemoryManager):
         self.memory_manager = memory_manager
         self.preloaded_models = set()
     
     async def preload_models(self, model_configs: list):
-        \"\"\"Preload multiple models in optimal order\"\"\"
+        """Preload multiple models in optimal order"""
         
-        print(f\"🔄 Preloading {len(model_configs)} models...\")
+        print(f"🔄 Preloading {len(model_configs)} models...")
         
         # Sort by priority and estimated memory usage
         sorted_configs = sorted(model_configs, key=lambda x: (
@@ -363,22 +363,22 @@ class ModelPreloader:
                 )
                 
                 self.preloaded_models.add(model_key)
-                print(f\"✅ Preloaded {model_key}\")
+                print(f"✅ Preloaded {model_key}")
                 
             except Exception as e:
-                print(f\"❌ Failed to preload {config.get('key', 'unknown')}: {e}\")
+                print(f"❌ Failed to preload {config.get('key', 'unknown')}: {e}")
     
     async def warm_up_model(self, model_key: str, warm_up_func: Callable):
-        \"\"\"Warm up a specific model with dummy data\"\"\"
+        """Warm up a specific model with dummy data"""
         
         try:
-            print(f\"🔥 Warming up model {model_key}...\")
+            print(f"🔥 Warming up model {model_key}...")
             
             start_time = time.time()
             await warm_up_func()
             warm_up_time = time.time() - start_time
             
-            print(f\"✅ Model {model_key} warmed up in {warm_up_time:.2f}s\")
+            print(f"✅ Model {model_key} warmed up in {warm_up_time:.2f}s")
             
         except Exception as e:
-            print(f\"❌ Failed to warm up {model_key}: {e}\")
+            print(f"❌ Failed to warm up {model_key}: {e}")

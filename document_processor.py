@@ -15,6 +15,7 @@ import numpy as np
 
 from extractors.nanonets_extractor import NanoNetsExtractor
 from extractors.nanonets_ocr_s_extractor import NanoNetsOCRSExtractor
+from extractors.nanonets_vllm_extractor import NanoNetsVLLMExtractor
 from extractors.layoutlm_extractor import LayoutLMExtractor
 from extractors.easyocr_extractor import EasyOCRExtractor
 from schema_manager import SchemaManager
@@ -32,6 +33,7 @@ class UnifiedDocumentProcessor:
         # Extractors
         self.nanonets_extractor = None
         self.nanonets_ocr_s_extractor = None
+        self.nanonets_vllm_extractor = None
         self.layoutlm_extractor = None
         self.easyocr_extractor = None
         
@@ -50,11 +52,17 @@ class UnifiedDocumentProcessor:
     async def initialize(self):
         """Initialize all extractors based on available resources"""
         try:
-            # Initialize NanoNets OCR-s (best performance with proper vLLM for KIE)
-            print("🔄 Initializing NanoNets OCR-s for KIE...")
+            # Initialize optimized vLLM extractor (fastest performance)
+            print("🔄 Initializing optimized vLLM extractor...")
+            self.nanonets_vllm_extractor = NanoNetsVLLMExtractor(self.config)
+            await self.nanonets_vllm_extractor.initialize()
+            print("✅ Optimized vLLM extractor initialized")
+            
+            # Initialize NanoNets OCR-s as backup
+            print("🔄 Initializing NanoNets OCR-s for backup...")
             self.nanonets_ocr_s_extractor = NanoNetsOCRSExtractor(self.config)
             await self.nanonets_ocr_s_extractor.initialize()
-            print("✅ NanoNets OCR-s initialized with vLLM server")
+            print("✅ NanoNets OCR-s initialized as backup")
             
             # Initialize standard NanoNets as backup
             print("🔄 Initializing standard NanoNets as backup...")
@@ -207,9 +215,11 @@ class UnifiedDocumentProcessor:
         if file_ext in ['.csv', '.txt']:
             return "direct"
         
-        # Prioritize OCR-s for KIE (Key Information Extraction)
-        if self.nanonets_ocr_s_extractor:
-            return "nanonets_ocr_s"  # Best for KIE with proper vLLM
+        # Prioritize optimized vLLM for KIE (Key Information Extraction)
+        if self.nanonets_vllm_extractor:
+            return "nanonets_vllm"  # Best performance with optimized vLLM
+        elif self.nanonets_ocr_s_extractor:
+            return "nanonets_ocr_s"  # Backup option
         elif extraction_type == "customs" and self.nanonets_extractor:
             return "nanonets"  # Best for German customs docs
         elif extraction_type == "invoice" and self.layoutlm_extractor:
@@ -251,10 +261,20 @@ class UnifiedDocumentProcessor:
             # Try extractors in order of preference with automatic fallback
             extractors_to_try = []
             
-            if strategy == "nanonets_ocr_s" and self.nanonets_ocr_s_extractor:
-                # Primary strategy: OCR-s for KIE
+            if strategy == "nanonets_vllm" and self.nanonets_vllm_extractor:
+                # Primary strategy: Optimized vLLM for fastest KIE
+                extractors_to_try = [
+                    ("nanonets_vllm", self.nanonets_vllm_extractor),
+                    ("nanonets_ocr_s", self.nanonets_ocr_s_extractor) if self.nanonets_ocr_s_extractor else None,
+                    ("nanonets", self.nanonets_extractor) if self.nanonets_extractor else None,
+                    ("layoutlm", self.layoutlm_extractor) if self.layoutlm_extractor else None,
+                    ("easyocr", self.easyocr_extractor)
+                ]
+            elif strategy == "nanonets_ocr_s" and self.nanonets_ocr_s_extractor:
+                # Backup strategy: OCR-s for KIE
                 extractors_to_try = [
                     ("nanonets_ocr_s", self.nanonets_ocr_s_extractor),
+                    ("nanonets_vllm", self.nanonets_vllm_extractor) if self.nanonets_vllm_extractor else None,
                     ("nanonets", self.nanonets_extractor) if self.nanonets_extractor else None,
                     ("layoutlm", self.layoutlm_extractor) if self.layoutlm_extractor else None,
                     ("easyocr", self.easyocr_extractor)
@@ -263,6 +283,7 @@ class UnifiedDocumentProcessor:
                 # Standard nanonets strategy
                 extractors_to_try = [
                     ("nanonets", self.nanonets_extractor),
+                    ("nanonets_vllm", self.nanonets_vllm_extractor) if self.nanonets_vllm_extractor else None,
                     ("nanonets_ocr_s", self.nanonets_ocr_s_extractor) if self.nanonets_ocr_s_extractor else None,
                     ("layoutlm", self.layoutlm_extractor) if self.layoutlm_extractor else None,
                     ("easyocr", self.easyocr_extractor)
@@ -270,6 +291,7 @@ class UnifiedDocumentProcessor:
             elif strategy == "layoutlm" and self.layoutlm_extractor:
                 extractors_to_try = [
                     ("layoutlm", self.layoutlm_extractor),
+                    ("nanonets_vllm", self.nanonets_vllm_extractor) if self.nanonets_vllm_extractor else None,
                     ("nanonets_ocr_s", self.nanonets_ocr_s_extractor) if self.nanonets_ocr_s_extractor else None,
                     ("easyocr", self.easyocr_extractor)
                 ]
@@ -358,6 +380,7 @@ class UnifiedDocumentProcessor:
     async def get_model_status(self) -> Dict[str, bool]:
         """Get status of all loaded models"""
         return {
+            "nanonets_vllm": self.nanonets_vllm_extractor is not None,
             "nanonets_ocr_s": self.nanonets_ocr_s_extractor is not None,
             "nanonets": self.nanonets_extractor is not None,
             "layoutlm": self.layoutlm_extractor is not None,

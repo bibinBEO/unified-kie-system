@@ -142,7 +142,7 @@ class NanoNetsOCRSExtractorOptimized:
     def _get_optimized_prompt(self, language: str) -> str:
         """Get optimized extraction prompt for faster processing"""
         if language == "de" or language == "auto":
-            return \"\"\"Extract key information from this document efficiently. Focus on:
+            return """Extract key information from this document efficiently. Focus on:
 
 PRIORITY FIELDS (extract first):
 - Numbers: LRN, MRN, EORI, Invoice numbers, dates
@@ -161,10 +161,10 @@ STRUCTURE AS COMPACT JSON:
   "other_fields": {}
 }
 
-Return ONLY the JSON. Be efficient and accurate.\"\"\"
+Return ONLY the JSON. Be efficient and accurate."""
         
         else:
-            return \"\"\"Extract key information efficiently. Priority fields:
+            return """Extract key information efficiently. Priority fields:
 
 - Document type and numbers (invoice #, reference numbers)
 - Key dates (invoice date, due date, processing date)  
@@ -183,7 +183,7 @@ Return compact JSON structure:
   "other": {}
 }
 
-ONLY JSON response. Be fast and precise.\"\"\"
+ONLY JSON response. Be fast and precise."""
 
     def _parse_response(self, response: str) -> Dict[str, Any]:
         """Optimized response parsing"""
