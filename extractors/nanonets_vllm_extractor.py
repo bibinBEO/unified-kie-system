@@ -42,20 +42,18 @@ class NanoNetsVLLMExtractor:
             print(f"🧹 CUDA cache cleared. Available memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
         
         try:
-            # Initialize vLLM engine with performance-optimized settings
+            # Initialize vLLM engine with stable settings for vision models
             self.model = LLM(
                 model=model_name, 
                 trust_remote_code=True,
                 tensor_parallel_size=1,
-                gpu_memory_utilization=0.95,  # Higher GPU utilization for speed
-                max_model_len=8192,  # Increased context for better processing
-                enforce_eager=False,  # Enable CUDA graphs for performance
-                disable_custom_all_reduce=False,  # Enable optimizations
-                enable_chunked_prefill=True,  # Chunked prefill for efficiency
-                max_num_batched_tokens=8192,  # Larger batch processing
-                max_num_seqs=64,  # More concurrent sequences
+                gpu_memory_utilization=0.85,  # Stable memory usage
+                max_model_len=4096,  # Conservative context length for stability
+                enforce_eager=True,  # Disable CUDA graphs for compatibility
+                disable_custom_all_reduce=True,  # Better compatibility
+                max_num_seqs=8,  # Lower concurrent sequences for stability
                 disable_log_stats=True,  # Reduce logging overhead
-                use_v2_block_manager=True  # New block manager for efficiency
+                use_v2_block_manager=False  # Use stable block manager
             )
             print("DEBUG: vLLM LLM initialized with conservative settings.")
             self.processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
