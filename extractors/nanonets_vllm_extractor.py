@@ -94,7 +94,6 @@ class NanoNetsVLLMExtractor:
             temperature=0.1,  # Lower temperature for faster, more deterministic output
             top_p=0.9, 
             max_tokens=2048,  # Increased for complete extraction
-            use_beam_search=False,  # Disable beam search for speed
             skip_special_tokens=True  # Skip special tokens for efficiency
         )
         

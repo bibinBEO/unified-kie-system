@@ -5,8 +5,9 @@ Simplified FastAPI application focusing on optimized vLLM performance
 import asyncio
 import uvicorn
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import tempfile
 import os
 from pathlib import Path
@@ -25,6 +26,9 @@ app = FastAPI(
     description="High-performance document processing with optimized vLLM",
     version="2.0.0-optimized"
 )
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Add CORS middleware
 app.add_middleware(
@@ -68,19 +72,23 @@ async def health_check():
         "version": "2.0.0-optimized"
     }
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 async def root():
-    """Root endpoint with system info"""
-    
-    return {
-        "service": "Unified KIE System - Optimized",
-        "status": "ready" if processor else "initializing",
-        "version": "2.0.0-optimized",
-        "endpoints": {
-            "health": "/health",
-            "extract": "/extract/file"
+    """Serve the web interface"""
+    try:
+        with open("static/index.html", "r") as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        return {
+            "service": "Unified KIE System - Optimized",
+            "status": "ready" if processor else "initializing",
+            "version": "2.0.0-optimized",
+            "message": "Web interface not found. API available at /extract/file",
+            "endpoints": {
+                "health": "/health",
+                "extract": "/extract/file"
+            }
         }
-    }
 
 @app.post("/extract/file")
 async def extract_from_file_optimized(
