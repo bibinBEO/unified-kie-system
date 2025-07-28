@@ -245,11 +245,12 @@
         
         <div class="main-content">
             <div class="upload-section" id="uploadSection">
-                <h3>📄 Upload Document for Processing</h3>
-                <p>Drag and drop a file here or click to select</p>
+                <h3 id="file-title">📄 Upload Document for Processing</h3>
+                <p id="p1-file">Drag and drop a file here or click to select</p>
+                <p id="p2-file"></p>
                 <div class="file-input-wrapper">
                     <input type="file" class="file-input" id="fileInput" accept=".png,.jpg,.jpeg,.pdf,.docx,.txt,.csv">
-                    <button class="file-button">Choose File</button>
+                    <button class="file-button" id="file-btn">Choose File</button>
                 </div>
                 <p><small>Supported: Images (PNG, JPG), PDF, DOCX, TXT, CSV</small></p>
             </div>
@@ -309,7 +310,11 @@
         const error = document.getElementById('error');
         const resultContent = document.getElementById('resultContent');
         const statusBar = document.getElementById('statusBar');
-        
+        const fileButton = document.getElementById('file-btn');
+        const fileP1 = document.getElementById('p1-file');
+        const fileP2 = document.getElementById('p2-file');
+        const fileTitle = document.getElementById('file-title');
+
         let selectedFile = null;
         
         // Check system status
@@ -345,23 +350,19 @@
             const file = event.target.files[0];
             if (file) {
                 selectedFile = file;
-                uploadSection.innerHTML = `
-                    <h3>✅ File Selected</h3>
-                    <p><strong>${file.name}</strong></p>
-                    <p>Size: ${(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                    <button class="file-button" onclick="document.getElementById('fileInput').click()">
-                        Change File
-                    </button>
-                `;
+                    fileP1.innerHTML=file.name
+                    fileP2.innerHTML='Size:'+(file.size / 1024 / 1024).toFixed(2)+ ' MB'
+                    fileTitle.innerHTML='File Selected'
+                    fileButton.innerHTML = 'Change File'
                 processButton.disabled = false;
             }
         }
-        
+
         async function checkSystemStatus() {
             try {
                 const response = await fetch('/health');
                 const status = await response.json();
-                
+
                 if (status.status === 'healthy' && status.processor_ready) {
                     statusBar.textContent = '✅ System Ready - Optimized vLLM Loaded';
                     statusBar.style.background = '#27ae60';
@@ -375,38 +376,38 @@
                 statusBar.style.background = '#e74c3c';
             }
         }
-        
+
         async function processDocument() {
             if (!selectedFile) return;
-            
+
             // Show loading
             loading.style.display = 'block';
             results.style.display = 'none';
             error.style.display = 'none';
             processButton.disabled = true;
-            
+
             const startTime = Date.now();
-            
+
             try {
                 const formData = new FormData();
                 formData.append('file', selectedFile);
                 formData.append('extraction_type', document.getElementById('extractionType').value);
                 formData.append('language', document.getElementById('language').value);
-                
+
                 const response = await fetch('/extract/file', {
                     method: 'POST',
                     body: formData
                 });
-                
+
                 const result = await response.json();
                 const processingTime = (Date.now() - startTime) / 1000;
-                
+
                 if (response.ok) {
                     displayResults(result, processingTime);
                 } else {
                     throw new Error(result.error || 'Processing failed');
                 }
-                
+
             } catch (e) {
                 showError(`Processing failed: ${e.message}`);
             } finally {
@@ -414,7 +415,7 @@
                 processButton.disabled = false;
             }
         }
-        
+
         function displayResults(result, totalTime) {
             let html = `
                 <div class="result-item">
@@ -422,7 +423,7 @@
                     <div class="result-value">${totalTime.toFixed(2)} seconds (Target: <30s)</div>
                 </div>
             `;
-            
+
             if (result.extraction_method) {
                 html += `
                     <div class="result-item">
@@ -431,7 +432,7 @@
                     </div>
                 `;
             }
-            
+
             if (result.raw_text) {
                 const preview = result.raw_text.substring(0, 500) + (result.raw_text.length > 500 ? '...' : '');
                 html += `
@@ -441,14 +442,14 @@
                     </div>
                 `;
             }
-            
+
             if (result.key_values && Object.keys(result.key_values).length > 0) {
                 html += `
                     <div class="result-item">
                         <div class="result-label">🔑 Key-Value Pairs</div>
                         <div class="result-value">
                 `;
-                
+
                 for (const [key, value] of Object.entries(result.key_values)) {
                     if (key !== 'error' && value) {
                         html += `<strong>${key}:</strong> ${value}<br>`;
@@ -456,7 +457,7 @@
                 }
                 html += '</div></div>';
             }
-            
+
             if (result.processing_metadata) {
                 const meta = result.processing_metadata;
                 html += `
@@ -470,11 +471,11 @@
                     </div>
                 `;
             }
-            
+
             resultContent.innerHTML = html;
             results.style.display = 'block';
         }
-        
+
         function showError(message) {
             error.textContent = message;
             error.style.display = 'block';
