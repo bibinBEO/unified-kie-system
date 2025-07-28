@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Unified KIE System - Optimized</title>
+    <title>Beo Dokumentenleser</title>
     <style>
         * {
             margin: 0;
@@ -235,41 +235,41 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🚀 Unified KIE System</h1>
-            <p>High-Performance Document Processing with Optimized vLLM</p>
+            <h1>🚀 Beo Dokumentenleser</h1>
+<!--            <p>High-Performance Document Processing with Optimized vLLM</p>-->
         </div>
         
         <div class="status-bar" id="statusBar">
-            System Ready - Optimized for Speed ⚡
+            System bereit – Optimiert für Geschwindigkeit ⚡
         </div>
         
         <div class="main-content">
             <div class="upload-section" id="uploadSection">
-                <h3 id="file-title">📄 Upload Document for Processing</h3>
-                <p id="p1-file">Drag and drop a file here or click to select</p>
+                <h3 id="file-title">📄 Dokument zum Verarbeiten hochladen</h3>
+                <p id="p1-file">Datei hierher ziehen oder klicken, um auszuwählen</p>
                 <p id="p2-file"></p>
                 <div class="file-input-wrapper">
                     <input type="file" class="file-input" id="fileInput" accept=".png,.jpg,.jpeg,.pdf,.docx,.txt,.csv">
-                    <button class="file-button" id="file-btn">Choose File</button>
+                    <button class="file-button" id="file-btn">Datei auswählen</button>
                 </div>
-                <p><small>Supported: Images (PNG, JPG), PDF, DOCX, TXT, CSV</small></p>
+                <p><small>Unterstützt: Bilder (PNG, JPG), PDF, DOCX, TXT, CSV</small></p>
             </div>
             
             <div class="options">
                 <div class="option-group">
-                    <label for="extractionType">Extraction Type:</label>
+                    <label for="extractionType">Extraktionstyp:</label>
                     <select id="extractionType">
-                        <option value="auto">Auto Detect</option>
-                        <option value="invoice">Invoice</option>
-                        <option value="customs">Customs Declaration</option>
-                        <option value="general">General Document</option>
+                        <option value="auto">Automatisch erkennen</option>
+                        <option value="invoice">Rechnung</option>
+                        <option value="customs">Zollanmeldung</option>
+                        <option value="general">Allgemeines Dokument</option>
                     </select>
                 </div>
                 
                 <div class="option-group">
-                    <label for="language">Language:</label>
+                    <label for="language">Sprache:</label>
                     <select id="language">
-                        <option value="auto">Auto Detect</option>
+                        <option value="auto">Automatisch erkennen</option>
                         <option value="en">English</option>
                         <option value="de">German</option>
                         <option value="fr">French</option>
@@ -279,23 +279,23 @@
             </div>
             
             <button class="process-button" id="processButton" disabled>
-                🔄 Process Document
+                🔄 Dokument verarbeiten
             </button>
             
-            <div class="performance-info">
-                ⚡ Optimized with vLLM CUDA Graphs • Target: <30s processing time
-            </div>
+<!--            <div class="performance-info">-->
+<!--                ⚡ Optimized with vLLM CUDA Graphs • Target: <30s processing time-->
+<!--            </div>-->
             
             <div class="loading" id="loading">
                 <div class="spinner"></div>
-                <h3>Processing document...</h3>
-                <p>Using optimized vLLM for high-speed extraction</p>
+                <h3>Dokument wird verarbeitet...</h3>
+<!--                <p>Using optimized vLLM for high-speed extraction</p>-->
             </div>
             
             <div class="error" id="error"></div>
             
             <div class="results" id="results">
-                <h3>📊 Extraction Results</h3>
+                <h3>📊 Extraktionsergebnisse</h3>
                 <div id="resultContent"></div>
             </div>
         </div>
@@ -364,15 +364,15 @@
                 const status = await response.json();
 
                 if (status.status === 'healthy' && status.processor_ready) {
-                    statusBar.textContent = '✅ System Ready - Optimized vLLM Loaded';
+                    statusBar.textContent = '✅ System bereit – Optimiertes vLLM geladen;
                     statusBar.style.background = '#27ae60';
                 } else {
-                    statusBar.textContent = '⏳ System Initializing - Please wait...';
+                    statusBar.textContent = '⏳ Systeminitialisierung – Bitte warten...';
                     statusBar.style.background = '#f39c12';
                     setTimeout(checkSystemStatus, 5000);
                 }
             } catch (e) {
-                statusBar.textContent = '❌ System Error - Check connection';
+                statusBar.textContent = '❌ Systemfehler – Verbindung überprüfen';
                 statusBar.style.background = '#e74c3c';
             }
         }
@@ -405,7 +405,7 @@
                 if (response.ok) {
                     displayResults(result, processingTime);
                 } else {
-                    throw new Error(result.error || 'Processing failed');
+                    throw new Error(result.error || 'Verarbeitung fehlgeschlagen');
                 }
 
             } catch (e) {
@@ -419,7 +419,7 @@
         function displayResults(result, totalTime) {
             let html = `
                 <div class="result-item">
-                    <div class="result-label">⏱️ Processing Time</div>
+                    <div class="result-label">⏱️ Verarbeitungszeit</div>
                     <div class="result-value">${totalTime.toFixed(2)} seconds (Target: <30s)</div>
                 </div>
             `;
@@ -427,7 +427,7 @@
             if (result.extraction_method) {
                 html += `
                     <div class="result-item">
-                        <div class="result-label">🔧 Extraction Method</div>
+                        <div class="result-label">🔧 Extraktionsmethode</div>
                         <div class="result-value">${result.extraction_method}</div>
                     </div>
                 `;
@@ -437,7 +437,7 @@
                 const preview = result.raw_text.substring(0, 500) + (result.raw_text.length > 500 ? '...' : '');
                 html += `
                     <div class="result-item">
-                        <div class="result-label">📝 Extracted Text</div>
+                        <div class="result-label">📝 Extrahierter Text</div>
                         <div class="result-value">${preview}</div>
                     </div>
                 `;
@@ -462,7 +462,7 @@
                 const meta = result.processing_metadata;
                 html += `
                     <div class="result-item">
-                        <div class="result-label">📊 Performance Metrics</div>
+                        <div class="result-label">📊 Leistungskennzahlen</div>
                         <div class="result-value">
                             Server Time: ${meta.processing_time?.toFixed(2) || 'N/A'}s<br>
                             File Size: ${meta.file_size_mb?.toFixed(2) || 'N/A'} MB<br>
