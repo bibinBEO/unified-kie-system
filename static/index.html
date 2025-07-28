@@ -364,7 +364,7 @@
                 const status = await response.json();
 
                 if (status.status === 'healthy' && status.processor_ready) {
-                    statusBar.textContent = '✅ System bereit – Optimiertes vLLM geladen;
+                    statusBar.textContent = '✅ System bereit – Optimiertes vLLM geladen';
                     statusBar.style.background = '#27ae60';
                 } else {
                     statusBar.textContent = '⏳ Systeminitialisierung – Bitte warten...';
