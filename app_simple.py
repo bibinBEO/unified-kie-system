@@ -54,9 +54,9 @@ async def startup_event():
         "temp_dir": "./temp"
     }
     
-    # Try to initialize optimized vLLM extractor
+    # Try to initialize optimized vLLM extractor with container fixes
     try:
-        print("🔄 Initializing optimized vLLM extractor...")
+        print("🔄 Initializing optimized vLLM extractor with container fixes...")
         vllm_processor = NanoNetsVLLMExtractor(config)
         await vllm_processor.initialize()
         print("✅ Optimized vLLM extractor ready!")

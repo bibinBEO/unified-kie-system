@@ -173,8 +173,8 @@ class NanoNetsExtractor:
             if width < 32 or height < 32:
                 raise ValueError(f"Image too small: {width}x{height}. Minimum size is 32x32")
             
-            # ULTRA-AGGRESSIVE image resizing to prevent IndexKernel errors
-            max_dimension = 768  # Much smaller to avoid tensor size mismatches
+            # ULTRA-AGGRESSIVE image resizing for maximum speed 
+            max_dimension = 512  # Even smaller for maximum speed
             if width > max_dimension or height > max_dimension:
                 # Calculate resize ratio to maintain aspect ratio
                 ratio = min(max_dimension / width, max_dimension / height)
@@ -631,87 +631,15 @@ class NanoNetsExtractor:
         }
 
     def _create_extraction_prompt(self, language: str) -> str:
-        """Create extraction prompt based on language and document type"""
+        """Create simplified extraction prompt for standard extractor"""
         
         if language == "de" or language == "auto":
-            return """Extract all key-value pairs from this document. This could be a German customs export declaration (Ausfuhranmeldung), invoice (Rechnung), or other business document.
-
-EXTRACT ALL VISIBLE TEXT AND STRUCTURE AS JSON:
-
-For German Customs Documents:
-- LRN (Local Reference Number / Lokale Referenznummer)
-- MRN (Movement Reference Number / Bearbeitungsnummer)  
-- EORI-Nummer
-- Dates: Anmeldedatum, Ausgangsdatum, Gültigkeitsdatum
-- Companies: Anmelder, Ausführer, Empfänger (Name, Adresse, Kontakt)
-- Customs offices: Gestellungszollstelle, Ausfuhrzollstelle
-- Goods: Warenbezeichnung, Warennummer, Ursprungsland
-- Quantities: Menge, Gewicht, Wert, Währung
-- Transport: Verkehrszweig, Kennzeichen, Container
-- Procedures: Verfahren, Bewilligung
-
-For Invoices:
-- Invoice number (Rechnungsnummer)
-- Date (Datum)
-- Vendor/Customer details (Lieferant/Kunde)
-- Line items (Positionen)
-- Amounts (Beträge)
-- Tax information (Steuern)
-
-For Other Documents:
-- Extract all visible text fields
-- Identify dates, numbers, names, addresses
-- Capture table data with structure
-- Note any stamps, signatures, or handwritten text
-
-INSTRUCTIONS:
-1. Preserve original language and formatting
-2. Extract ALL text, even partial or unclear
-3. Structure as comprehensive JSON
-4. Include confidence indicators for uncertain text
-5. Maintain relationships between related fields
-
-Return complete JSON structure with all extracted information."""
+            return """Extract key info as JSON:
+{"company": "Firmenname", "invoice": "Rechnungsnummer", "date": "Datum", "amount": "Betrag", "currency": "EUR"}"""
 
         else:  # English or other languages
-            return """Extract all key-value pairs from this document (invoice, customs declaration, business document, etc.).
-
-EXTRACT ALL VISIBLE TEXT AND STRUCTURE AS JSON:
-
-For Invoices:
-- Invoice number, date, due date
-- Vendor/supplier information (name, address, contact)
-- Customer/buyer information  
-- Line items (description, quantity, unit price, total)
-- Subtotal, tax amount, grand total
-- Payment terms, currency
-- Any additional notes or terms
-
-For Customs/Export Documents:
-- Reference numbers (LRN, MRN, EORI)
-- Declaration dates and validity
-- Parties involved (declarant, exporter, consignee)
-- Goods description and classification
-- Origin and destination countries
-- Quantities, weights, values
-- Transport details
-- Customs procedures and authorizations
-
-For General Documents:
-- All visible text fields and values
-- Dates, numbers, names, addresses
-- Table data with proper structure
-- Company information and contacts
-- Any stamps, signatures, or annotations
-
-INSTRUCTIONS:
-1. Extract ALL visible text, even if partially readable
-2. Maintain original formatting and structure
-3. Return comprehensive JSON with nested objects
-4. Include metadata about extraction confidence
-5. Preserve relationships between related fields
-
-Return complete JSON structure with extracted information."""
+            return """Extract key info as JSON:
+{"company": "Company name", "invoice": "Invoice number", "date": "Date", "amount": "Amount", "currency": "USD"}"""
 
     def _parse_response(self, response: str) -> Dict[str, Any]:
         """Parse the model response into structured data"""

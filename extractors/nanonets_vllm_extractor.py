@@ -27,7 +27,7 @@ class NanoNetsVLLMExtractor:
         print(f"🚀 NanoNets vLLM initializing on {self.device.upper()}")
 
     async def initialize(self):
-        """Initialize the vLLM engine and processor with CUDA error handling."""
+        """Initialize the vLLM engine and processor with container-friendly settings."""
         print(f"DEBUG: VLLM_AVAILABLE={VLLM_AVAILABLE}, self.device={self.device}")
         if not VLLM_AVAILABLE or self.device != "cuda":
             print("⚠️  vLLM is not available or not running on GPU. Fallback mode.")
@@ -42,18 +42,23 @@ class NanoNetsVLLMExtractor:
             print(f"🧹 CUDA cache cleared. Available memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
         
         try:
-            # Initialize vLLM engine with stable settings for vision models
+            # Import multiprocessing context fix for containers
+            import multiprocessing
+            multiprocessing.set_start_method('spawn', force=True)
+            
+            # Initialize vLLM engine with container-optimized settings (compatible parameters only)
             self.model = LLM(
                 model=model_name, 
                 trust_remote_code=True,
                 tensor_parallel_size=1,
-                gpu_memory_utilization=0.85,  # Stable memory usage
-                max_model_len=4096,  # Conservative context length for stability
+                gpu_memory_utilization=0.75,  # Balanced memory usage
+                max_model_len=2048,  # Increase for better vision processing
                 enforce_eager=True,  # Disable CUDA graphs for compatibility
                 disable_custom_all_reduce=True,  # Better compatibility
-                max_num_seqs=8,  # Lower concurrent sequences for stability
+                max_num_seqs=1,  # Single sequence for maximum stability
                 disable_log_stats=True,  # Reduce logging overhead
-                use_v2_block_manager=False  # Use stable block manager
+                use_v2_block_manager=False,  # Use stable block manager
+                swap_space=0  # Disable swap for performance
             )
             print("DEBUG: vLLM LLM initialized with conservative settings.")
             self.processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
@@ -89,34 +94,61 @@ class NanoNetsVLLMExtractor:
         text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         
         sampling_params = SamplingParams(
-            temperature=0.1,  # Lower temperature for faster, more deterministic output
-            top_p=0.9, 
-            max_tokens=2048,  # Increased for complete extraction
+            temperature=0.0,  # Deterministic output for speed
+            top_p=1.0, 
+            max_tokens=256,  # Very small output for maximum speed
             skip_special_tokens=True  # Skip special tokens for efficiency
         )
         
         try:
-            # Pre-process image for optimal performance
+            # Aggressive image preprocessing for vLLM speed
             if hasattr(image, 'size'):
                 width, height = image.size
-                # Resize large images for faster processing
-                if width > 2048 or height > 2048:
-                    ratio = min(2048/width, 2048/height)
+                # Very aggressive resizing for vLLM performance
+                max_dim = 768  # Smaller for vLLM vision processing
+                if width > max_dim or height > max_dim:
+                    ratio = min(max_dim/width, max_dim/height)
                     new_size = (int(width * ratio), int(height * ratio))
+                    # Ensure dimensions are multiples of 32 for better tensor handling
+                    new_size = ((new_size[0] // 32) * 32, (new_size[1] // 32) * 32)
+                    if new_size[0] < 32:
+                        new_size = (32, new_size[1])
+                    if new_size[1] < 32:
+                        new_size = (new_size[0], 32)
                     image = image.resize(new_size, Image.Resampling.LANCZOS)
-                    print(f"🖼️ Resized image from {width}x{height} to {new_size[0]}x{new_size[1]}")
+                    print(f"🖼️ vLLM optimized resize: {width}x{height} → {new_size[0]}x{new_size[1]}")
             
-            # Generate with optimized settings
-            outputs = self.model.generate([text], sampling_params)
-            raw_response = outputs[0].outputs[0].text
-            structured_data = self._parse_response(raw_response)
+            # Add timeout mechanism for vLLM generation
+            import signal
             
-            return {
-                "raw_text": raw_response,
-                "key_values": structured_data,
-                "extraction_method": "nanonets_vllm",
-                "timestamp": datetime.now().isoformat()
-            }
+            def timeout_handler(signum, frame):
+                raise TimeoutError("vLLM generation timed out")
+            
+            # Set 45-second timeout for vLLM processing
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(45)
+            
+            try:
+                # Generate with optimized settings and detailed logging
+                print(f"🔄 Starting vLLM generation with text length: {len(text)}")
+                outputs = self.model.generate([text], sampling_params)
+                print(f"✅ vLLM generation completed successfully")
+                raw_response = outputs[0].outputs[0].text
+                print(f"📝 Generated response length: {len(raw_response)}")
+                structured_data = self._parse_response(raw_response)
+                
+                signal.alarm(0)  # Cancel timeout
+                
+                return {
+                    "raw_text": raw_response,
+                    "key_values": structured_data,
+                    "extraction_method": "nanonets_vllm",
+                    "timestamp": datetime.now().isoformat()
+                }
+            except TimeoutError:
+                signal.alarm(0)  # Cancel timeout
+                print("⏰ vLLM processing timed out (60s), falling back...")
+                raise Exception("vLLM timeout - fallback required")
         except RuntimeError as e:
             error_str = str(e)
             print(f"⚠️  CUDA RuntimeError in vLLM extraction: {error_str}")
@@ -169,87 +201,15 @@ class NanoNetsVLLMExtractor:
             }
 
     def _create_extraction_prompt(self, language: str) -> str:
-        """Create extraction prompt based on language and document type."""
-        # Using the same detailed prompts as the original extractor
+        """Create ultra-simple extraction prompt for vLLM speed."""
+        
         if language == "de" or language == "auto":
-            return """Extract all key-value pairs from this document. This could be a German customs export declaration (Ausfuhranmeldung), invoice (Rechnung), or other business document.
-
-EXTRACT ALL VISIBLE TEXT AND STRUCTURE AS JSON:
-
-For German Customs Documents:
-- LRN (Local Reference Number / Lokale Referenznummer)
-- MRN (Movement Reference Number / Bearbeitungsnummer)  
-- EORI-Nummer
-- Dates: Anmeldedatum, Ausgangsdatum, Gültigkeitsdatum
-- Companies: Anmelder, Ausführer, Empfänger (Name, Adresse, Kontakt)
-- Customs offices: Gestellungszollstelle, Ausfuhrzollstelle
-- Goods: Warenbezeichnung, Warennummer, Ursprungsland
-- Quantities: Menge, Gewicht, Wert, Währung
-- Transport: Verkehrszweig, Kennzeichen, Container
-- Procedures: Verfahren, Bewilligung
-
-For Invoices:
-- Invoice number (Rechnungsnummer)
-- Date (Datum)
-- Vendor/Customer details (Lieferant/Kunde)
-- Line items (Positionen)
-- Amounts (Beträge)
-- Tax information (Steuern)
-
-For Other Documents:
-- Extract all visible text fields
-- Identify dates, numbers, names, addresses
-- Capture table data with structure
-- Note any stamps, signatures, or handwritten text
-
-INSTRUCTIONS:
-1. Preserve original language and formatting
-2. Extract ALL text, even partial or unclear
-3. Structure as comprehensive JSON
-4. Include confidence indicators for uncertain text
-5. Maintain relationships between related fields
-
-Return complete JSON structure with all extracted information."""
+            return """Extract key info from this German document as JSON:
+{"company": "company name", "invoice": "number", "date": "date", "amount": "total", "currency": "EUR/USD"}"""
 
         else:  # English or other languages
-            return """Extract all key-value pairs from this document (invoice, customs declaration, business document, etc.).
-
-EXTRACT ALL VISIBLE TEXT AND STRUCTURE AS JSON:
-
-For Invoices:
-- Invoice number, date, due date
-- Vendor/supplier information (name, address, contact)
-- Customer/buyer information  
-- Line items (description, quantity, unit price, total)
-- Subtotal, tax amount, grand total
-- Payment terms, currency
-- Any additional notes or terms
-
-For Customs/Export Documents:
-- Reference numbers (LRN, MRN, EORI)
-- Declaration dates and validity
-- Parties involved (declarant, exporter, consignee)
-- Goods description and classification
-- Origin and destination countries
-- Quantities, weights, values
-- Transport details
-- Customs procedures and authorizations
-
-For General Documents:
-- All visible text fields and values
-- Dates, numbers, names, addresses
-- Table data with proper structure
-- Company information and contacts
-- Any stamps, signatures, or annotations
-
-INSTRUCTIONS:
-1. Extract ALL visible text, even if partially readable
-2. Maintain original formatting and structure
-3. Return comprehensive JSON with nested objects
-4. Include metadata about extraction confidence
-5. Preserve relationships between related fields
-
-Return complete JSON structure with extracted information."""
+            return """Extract key info from this document as JSON:
+{"company": "company name", "invoice": "number", "date": "date", "amount": "total", "currency": "USD/EUR"}"""
 
     def _parse_response(self, response: str) -> Dict[str, Any]:
         """Parse the model response into structured data."""
